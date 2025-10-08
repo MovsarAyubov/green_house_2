@@ -1,83 +1,80 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
-import 'package:green_house_2/bluetooth_service.dart';
+import 'bluetooth_service.dart';
 
-class HomePage extends StatefulWidget {
-const HomePage({super.key});
-
+class BluetoothPage extends StatefulWidget {
   @override
-  State<HomePage> createState() => _HomePageState();
+  _BluetoothPageState createState() => _BluetoothPageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final BleStreamService _bleService = BleStreamService();
-  List<DiscoveredDevice> _devices = [];
-  bool _isScanning = false;
+class _BluetoothPageState extends State<BluetoothPage> {
+  final HC06BluetoothService _bluetoothService = HC06BluetoothService();
+  String _lastReceivedData = '';
 
   @override
   void initState() {
     super.initState();
-    // Подписываемся на потоки
-    _bleService.devicesStream.listen((devices) {
-      setState(() => _devices = devices);
-    });
-    
-    _bleService.scanningStateStream.listen((isScanning) {
-      setState(() => _isScanning = isScanning);
+    // Подписываемся на получение данных
+    _bluetoothService.dataStream.listen((data) {
+      setState(() {
+        _lastReceivedData = data;
+      });
     });
   }
 
   @override
   void dispose() {
-    _bleService.dispose();
+    _bluetoothService.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('BLE Scanner (Stream)')),
-      body: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Text('Статус: ${_isScanning ? 'Сканирование...' : 'Остановлено'}'),
-                if (_isScanning) CircularProgressIndicator(),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _devices.length,
-              itemBuilder: (context, index) => InkWell(
-                onTap: () {
-                  _bleService.connectToDiscoveredDevice(_devices[index]);
-                },
-                child: Card(
-                  child: Column(
-                    children: [
-                      Text(_devices[index].name),
-                    ],
-                  )
-                ),
-              ),
-            ),
-          ),
-        ],
+      appBar: AppBar(
+        title: Text('HC-06 Bluetooth'),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (_isScanning) {
-            _bleService.stopScan();
-          } else {
-            _bleService.startScan();
-          }
-        },
-        child: Icon(_isScanning ? Icons.stop : Icons.search),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            StreamBuilder<ConnectionStateUpdate>(
+              stream: _bluetoothService.connectionStateStream,
+              builder: (context, snapshot) {
+                final state = snapshot.data?.connectionState;
+                return Text(
+                  'Статус: ${_getConnectionStatusText(state)}',
+                  style: TextStyle(fontSize: 18),
+                );
+              },
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Последние данные: $_lastReceivedData',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => _bluetoothService.startScanAndConnect(),
+              child: Text('Найти и подключить HC-06'),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _getConnectionStatusText(DeviceConnectionState? state) {
+    switch (state) {
+      case DeviceConnectionState.connected:
+        return 'Подключено';
+      case DeviceConnectionState.connecting:
+        return 'Подключение...';
+      case DeviceConnectionState.disconnecting:
+        return 'Отключение...';
+      case DeviceConnectionState.disconnected:
+        return 'Отключено';
+      default:
+        return 'Неизвестно';
+    }
   }
 }
